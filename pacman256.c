@@ -143,9 +143,11 @@ typedef struct {
 
 static game_instance_t state;
 
-// Software Framebuffer Context
+// --- Pipeline/Graphics Assets ---
 static uint32_t pixel_buffer[SCREEN_WIDTH * SCREEN_HEIGHT];
 static sg_image fb_image;
+static sg_pipeline pip;
+static sg_bindings bind;
 
 // --- Timing Utilities ---
 
@@ -209,7 +211,6 @@ static void update_game_loop(void) {
     state.global_tick++;
     
     if (state.mode == STATE_GAMEPLAY) {
-        // Safe scrolling update step
         state.scroll_y += 0.2f;
         state.glitch_y += 0.15f;
     }
@@ -229,12 +230,60 @@ static void init(void) {
         .logger.func = slog_func,
     });
 
-    // Create dynamic frame buffer texture backing asset mapping
+    // Native full-screen quad vertex representation
+    float vertices[] = {
+        // positions      // texcoords
+        -1.0f,  1.0f,     0.0f, 0.0f,
+         1.0f,  1.0f,     1.0f, 0.0f,
+        -1.0f, -1.0f,     0.0f, 1.0f,
+         1.0f, -1.0f,     1.0f, 1.0f
+    };
+    bind.vertex_buffers[0] = sg_make_buffer(&(sg_buffer_desc){
+        .data = SG_RANGE(vertices)
+    });
+
+    // Modern dynamic texture map wrapper 
     fb_image = sg_make_image(&(sg_image_desc){
         .width = SCREEN_WIDTH,
         .height = SCREEN_HEIGHT,
-        .usage = SG_USAGE_STREAM,
+        .usage = SG_USAGE_DYNAMIC,
         .pixel_format = SG_PIXELFORMAT_RGBA8,
+    });
+    bind.images[0] = fb_image;
+
+    // Portable cross-platform native shader compilation strings (Metal compatible)
+    sg_shader shd = sg_make_shader(&(sg_shader_desc){
+        .vertex_func.source = 
+            "#include <metal_stdlib>\n"
+            "using namespace metal;\n"
+            "struct vs_in { float2 pos [[attribute(0)]]; float2 uv [[attribute(1)]]; };\n"
+            "struct vs_out { float4 pos [[position]]; float2 uv; };\n"
+            "vertex vs_out _main(vs_in in [[stage_in]]) {\n"
+            "  vs_out out;\n"
+            "  out.pos = float4(in.pos, 0.0, 1.0);\n"
+            "  out.uv = in.uv;\n"
+            "  return out;\n"
+            "}\n",
+        .fragment_func.source =
+            "#include <metal_stdlib>\n"
+            "using namespace metal;\n"
+            "struct fs_in { float4 pos [[position]]; float2 uv; };\n"
+            "fragment float4 _main(fs_in in [[stage_in]], texture2d<float> tex [[texture(0)]], sampler smp [[sampler(0)]]) {\n"
+            "  return tex.sample(smp, in.uv);\n"
+            "}\n",
+        .attrs = {
+            [0].name = "pos",
+            [1].name = "uv"
+        }
+    });
+
+    pip = sg_make_pipeline(&(sg_pipeline_desc){
+        .shader = shd,
+        .primitive_type = SG_PRIMITIVETYPE_TRIANGLE_STRIP,
+        .layout.attrs = {
+            [0].format = SG_VERTEXFORMAT_FLOAT2,
+            [1].format = SG_VERTEXFORMAT_FLOAT2
+        }
     });
     
     init_game();
@@ -243,13 +292,12 @@ static void init(void) {
 static void frame(void) {
     update_game_loop();
     
-    // Clear back buffer frame to true black
-    clear_pixel_buffer(0xFF000000);
+    clear_pixel_buffer(0xFF000000); // Base frame ABGR mapping
     
     int offset_y = (int)state.scroll_y;
     int start_tile_y = (offset_y / TILE_SIZE);
     
-    // Render all visible paths based on local offsets
+    // Process map geometry layers directly into frame layouts
     for (int y = 0; y < (SCREEN_HEIGHT / TILE_SIZE) + 1; y++) {
         int map_y = start_tile_y + y;
         int render_y = (y * TILE_SIZE) - (offset_y % TILE_SIZE);
@@ -259,28 +307,28 @@ static void frame(void) {
             int render_x = x * TILE_SIZE;
             
             if (tile == MT_WALL) {
-                draw_rect(render_x, render_y, TILE_SIZE - 1, TILE_SIZE - 1, 0xFFFF3300); // ABGR - Blue
+                draw_rect(render_x, render_y, TILE_SIZE - 1, TILE_SIZE - 1, 0xFFFF5522); // Blue corridors
             } else if (tile == MT_DOT) {
-                draw_rect(render_x + 3, render_y + 3, 2, 2, 0xFFFFFFFF); // White
+                draw_rect(render_x + 3, render_y + 3, 2, 2, 0xFFFFFFFF); // White dots
             }
         }
     }
     
-    // Draw Pac-Man actor onto software grid frame maps
+    // Draw the Pac-Man actor
     int pac_render_y = (state.pacman.y * TILE_SIZE) - (offset_y % TILE_SIZE);
     if (pac_render_y >= 0 && pac_render_y < SCREEN_HEIGHT) {
-        draw_rect(state.pacman.x * TILE_SIZE, pac_render_y, TILE_SIZE, TILE_SIZE, 0xFF00FFFF); // ABGR - Yellow
+        draw_rect(state.pacman.x * TILE_SIZE, pac_render_y, TILE_SIZE, TILE_SIZE, 0xFF00FFFF); // Yellow Pacman
     }
 
-    // Stream pixel updates directly into modern GPU render maps
+    // Modern Sokol 2026 explicit struct nesting notation update references
     sg_update_image(fb_image, &(sg_image_data){
-        .subimage[0][0] = {
+        .data.subimage[0][0] = {
             .ptr = pixel_buffer,
             .size = sizeof(pixel_buffer)
         }
     });
 
-    // Fire standard rendering target pipelines
+    // Execute clear frame pipeline operations
     sg_begin_pass(&(sg_pass){
         .action = {
             .colors[0] = { .load_action = SG_LOADACTION_CLEAR, .clear_value = {0, 0, 0, 1} }
@@ -288,7 +336,10 @@ static void frame(void) {
         .swapchain = sglue_swapchain()
     });
     
-    // Low level structural pass updates flow out natively 
+    // Dispatch core textures via quad mesh pipeline
+    sg_apply_pipeline(pip);
+    sg_apply_bindings(&bind);
+    sg_draw(0, 4, 1);
     
     sg_end_pass();
     sg_commit();
