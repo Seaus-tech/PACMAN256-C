@@ -8,8 +8,8 @@ if(EMSCRIPTEN)
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
 endif()
 
-# Sokol headers
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+# Sokol headers (Added the /sokol directory so headers are found cleanly)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/sokol)
 
 # Main executable
 add_executable(pacman256 pacman256.c sokol/sokol.c)
