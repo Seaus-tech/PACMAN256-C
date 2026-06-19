@@ -242,16 +242,15 @@ static void init(void) {
         .data = SG_RANGE(vertices)
     });
 
-    // Match your classic local header usage stream definitions
+    // Modern image initialization block (implicitly dynamic)
     fb_image = sg_make_image(&(sg_image_desc){
         .width = SCREEN_WIDTH,
         .height = SCREEN_HEIGHT,
-        .usage = SG_USAGE_STREAM,
         .pixel_format = SG_PIXELFORMAT_RGBA8,
     });
-    bind.fs_images[0] = fb_image;
+    bind.fs.images[0] = fb_image;
 
-    // Use structural fields matching your modern shader compiler pass rules
+    // Use latest structural functional fields (.vertex_func / .fragment_func)
     sg_shader shd = sg_make_shader(&(sg_shader_desc){
         .vertex_func.source = 
             "#include <metal_stdlib>\n"
@@ -316,12 +315,9 @@ static void frame(void) {
         draw_rect(state.pacman.x * TILE_SIZE, pac_render_y, TILE_SIZE, TILE_SIZE, 0xFF00FFFF); // Yellow Pacman
     }
 
-    // Classic non-nested fallback update array formatting
+    // Modern frame data slices array layout updates
     sg_update_image(fb_image, &(sg_image_data){
-        .subimage[0][0] = {
-            .ptr = pixel_buffer,
-            .size = sizeof(pixel_buffer)
-        }
+        .slices[0][0] = SG_RANGE(pixel_buffer)
     });
 
     // Execute clear frame pipeline operations
