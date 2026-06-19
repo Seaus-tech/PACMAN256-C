@@ -234,10 +234,12 @@ static void init(void) {
 static void frame(void) {
     update_game_loop();
     
+    // Bind the window swapchain setup directly to the pass declaration properties
     sg_begin_pass(&(sg_pass){
         .action = {
             .colors[0] = { .load_action = SG_LOADACTION_CLEAR, .clear_value = {0, 0, 0, 1} }
-        }
+        },
+        .swapchain = sglue_swapchain()
     });
     
     // Core engine rendering passes call here
