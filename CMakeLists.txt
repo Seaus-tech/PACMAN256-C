@@ -25,7 +25,14 @@ else()
         find_library(COCOA_LIBRARY Cocoa)
         find_library(QUARTZ_CORE_LIBRARY QuartzCore)
         find_library(METAL_LIBRARY Metal)
-        target_link_libraries(pacman256 ${COCOA_LIBRARY} ${QUARTZ_CORE_LIBRARY} ${METAL_LIBRARY})
+        find_library(AUDIO_TOOLBOX_LIBRARY AudioToolbox)
+        
+        target_link_libraries(pacman256 
+            ${COCOA_LIBRARY} 
+            ${QUARTZ_CORE_LIBRARY} 
+            ${METAL_LIBRARY} 
+            ${AUDIO_TOOLBOX_LIBRARY}
+        )
     elseif(LINUX)
         find_package(X11 REQUIRED)
         find_package(OpenGL REQUIRED)
