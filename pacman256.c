@@ -26,10 +26,13 @@
 #include "sokol_audio.h"
 #include "sokol_log.h"
 #include "sokol_glue.h"
+#define SOKOL_GL_IMPL
+#include "sokol_gl.h"
 
 #define MAZE_WIDTH 28
 #define SCREEN_WIDTH 224
 #define SCREEN_HEIGHT 288
+#define TILE_SIZE 8
 
 // --- Enumerations & Data Structures ---
 
@@ -164,15 +167,6 @@ static bool now(uint32_t trigger) {
 
 // --- Maze Generation & Processing ---
 
-static int get_tile_color(maze_tile_t type) {
-    switch (type) {
-        case MT_WALL:   return 6; // Blue hardware mapping color
-        case MT_FRUIT:  return 1; // Cherry red index profile mapping
-        case MT_DOT:    return 7; // White
-        default:        return 0;
-    }
-}
-
 static maze_tile_t get_procedural_tile(int x, int y) {
     if (x <= 0 || x >= MAZE_WIDTH - 1) return MT_WALL;
     if (y < 5) return MT_EMPTY;
@@ -203,13 +197,12 @@ static void update_game_loop(void) {
     state.global_tick++;
     
     if (state.mode == STATE_GAMEPLAY) {
-        // Move the infinite procedural engine up
-        state.scroll_y += 0.15f;
-        state.glitch_y += 0.12f;
+        // Safe linear scrolling speed layout
+        state.scroll_y += 0.05f;
+        state.glitch_y += 0.03f;
         
-        // Resolve round initialization timers
         if (now(state.game.round_started)) {
-            // Processing updates once started
+            // Runtime simulation updates go here
         }
     }
 }
@@ -222,6 +215,10 @@ static void init(void) {
         .logger.func = slog_func,
     });
     
+    sgl_setup(&(sgl_desc_t){
+        .logger.func = slog_func,
+    });
+
     saudio_setup(&(saudio_desc){
         .sample_rate = 44100,
         .num_channels = 1,
@@ -234,7 +231,42 @@ static void init(void) {
 static void frame(void) {
     update_game_loop();
     
-    // Bind the window swapchain setup directly to the pass declaration properties
+    // Establish structural orthographic viewport projections
+    sgl_defaults();
+    sgl_ortho(0.0f, (float)SCREEN_WIDTH, (float)SCREEN_HEIGHT, 0.0f, -1.0f, 1.0f);
+    
+    // Save current transform state and handle internal scrolling offset calculations
+    sgl_push_matrix();
+    sgl_translate(0.0f, state.scroll_y, 0.0f);
+    
+    int start_tile_y = (int)(state.scroll_y / TILE_SIZE) - 1;
+    int end_tile_y = start_tile_y + (SCREEN_HEIGHT / TILE_SIZE) + 2;
+    if (start_tile_y < 0) start_tile_y = 0;
+
+    // Render local tiles in view range layout
+    for (int y = start_tile_y; y < end_tile_y; y++) {
+        for (int x = 0; x < MAZE_WIDTH; x++) {
+            maze_tile_t tile = get_procedural_tile(x, y);
+            float rx = (float)(x * TILE_SIZE);
+            float ry = (float)(y * TILE_SIZE);
+            
+            if (tile == MT_WALL) {
+                sgl_c3f(0.0f, 0.2f, 1.0f); // Blue corridors
+                sgl_draw_r2f(rx, ry, (float)TILE_SIZE, (float)TILE_SIZE);
+            } else if (tile == MT_DOT) {
+                sgl_c3f(1.0f, 1.0f, 1.0f); // White dots
+                sgl_draw_r2f(rx + 3.0f, ry + 3.0f, 2.0f, 2.0f);
+            }
+        }
+    }
+    
+    // Draw Pac-Man actor instance
+    sgl_c3f(1.0f, 1.0f, 0.0f); // Yellow Pac-Man
+    sgl_draw_r2f((float)(state.pacman.x * TILE_SIZE), (float)(state.pacman.y * TILE_SIZE), (float)TILE_SIZE, (float)TILE_SIZE);
+    
+    sgl_pop_matrix();
+    
+    // Finalize standard framebuffer pass actions
     sg_begin_pass(&(sg_pass){
         .action = {
             .colors[0] = { .load_action = SG_LOADACTION_CLEAR, .clear_value = {0, 0, 0, 1} }
@@ -242,14 +274,14 @@ static void frame(void) {
         .swapchain = sglue_swapchain()
     });
     
-    // Core engine rendering passes call here
-    
+    sgl_draw();
     sg_end_pass();
     sg_commit();
 }
 
 static void cleanup(void) {
     saudio_shutdown();
+    sgl_shutdown();
     sg_shutdown();
 }
 
