@@ -242,18 +242,18 @@ static void init(void) {
         .data = SG_RANGE(vertices)
     });
 
-    // Modern dynamic texture map wrapper 
+    // Match your classic local header version properties
     fb_image = sg_make_image(&(sg_image_desc){
         .width = SCREEN_WIDTH,
         .height = SCREEN_HEIGHT,
-        .usage = SG_USAGE_DYNAMIC,
+        .usage = SG_USAGE_STREAM,
         .pixel_format = SG_PIXELFORMAT_RGBA8,
     });
-    bind.images[0] = fb_image;
+    bind.fs_images[0] = fb_image;
 
-    // Portable cross-platform native shader compilation strings (Metal compatible)
+    // Cross-platform native shader strings (Metal compatible layout)
     sg_shader shd = sg_make_shader(&(sg_shader_desc){
-        .vertex_func.source = 
+        .vs.source = 
             "#include <metal_stdlib>\n"
             "using namespace metal;\n"
             "struct vs_in { float2 pos [[attribute(0)]]; float2 uv [[attribute(1)]]; };\n"
@@ -264,17 +264,13 @@ static void init(void) {
             "  out.uv = in.uv;\n"
             "  return out;\n"
             "}\n",
-        .fragment_func.source =
+        .fs.source =
             "#include <metal_stdlib>\n"
             "using namespace metal;\n"
             "struct fs_in { float4 pos [[position]]; float2 uv; };\n"
             "fragment float4 _main(fs_in in [[stage_in]], texture2d<float> tex [[texture(0)]], sampler smp [[sampler(0)]]) {\n"
             "  return tex.sample(smp, in.uv);\n"
-            "}\n",
-        .attrs = {
-            [0].name = "pos",
-            [1].name = "uv"
-        }
+            "}\n"
     });
 
     pip = sg_make_pipeline(&(sg_pipeline_desc){
@@ -320,9 +316,9 @@ static void frame(void) {
         draw_rect(state.pacman.x * TILE_SIZE, pac_render_y, TILE_SIZE, TILE_SIZE, 0xFF00FFFF); // Yellow Pacman
     }
 
-    // Modern Sokol 2026 explicit struct nesting notation update references
+    // Traditional dynamic frame layout update notation for your local headers
     sg_update_image(fb_image, &(sg_image_data){
-        .data.subimage[0][0] = {
+        .subimage[0][0] = {
             .ptr = pixel_buffer,
             .size = sizeof(pixel_buffer)
         }
