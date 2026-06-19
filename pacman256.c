@@ -242,18 +242,18 @@ static void init(void) {
         .data = SG_RANGE(vertices)
     });
 
-    // Match your classic local header version properties
+    // Modern image configuration block
     fb_image = sg_make_image(&(sg_image_desc){
         .width = SCREEN_WIDTH,
         .height = SCREEN_HEIGHT,
-        .usage = SG_USAGE_STREAM,
+        .usage = SG_USAGE_DYNAMIC,
         .pixel_format = SG_PIXELFORMAT_RGBA8,
     });
-    bind.fs_images[0] = fb_image;
+    bind.fs.images[0] = fb_image;
 
-    // Cross-platform native shader strings (Metal compatible layout)
+    // Use latest structural functional fields (.vertex_func / .fragment_func)
     sg_shader shd = sg_make_shader(&(sg_shader_desc){
-        .vs.source = 
+        .vertex_func.source = 
             "#include <metal_stdlib>\n"
             "using namespace metal;\n"
             "struct vs_in { float2 pos [[attribute(0)]]; float2 uv [[attribute(1)]]; };\n"
@@ -264,7 +264,7 @@ static void init(void) {
             "  out.uv = in.uv;\n"
             "  return out;\n"
             "}\n",
-        .fs.source =
+        .fragment_func.source =
             "#include <metal_stdlib>\n"
             "using namespace metal;\n"
             "struct fs_in { float4 pos [[position]]; float2 uv; };\n"
@@ -316,9 +316,9 @@ static void frame(void) {
         draw_rect(state.pacman.x * TILE_SIZE, pac_render_y, TILE_SIZE, TILE_SIZE, 0xFF00FFFF); // Yellow Pacman
     }
 
-    // Traditional dynamic frame layout update notation for your local headers
+    // Modern explicitly nested data updates
     sg_update_image(fb_image, &(sg_image_data){
-        .subimage[0][0] = {
+        .data.subimage[0][0] = {
             .ptr = pixel_buffer,
             .size = sizeof(pixel_buffer)
         }
