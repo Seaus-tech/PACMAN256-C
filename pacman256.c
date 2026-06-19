@@ -13,7 +13,7 @@
       - Fruit score multipliers
       - High score tracking
 
-    Architecture: single-file C99, same style as pacman.c by floooh.
+    Architecture: single-file C99, same style as PACMAN-C by seaus-tech.
     All state lives in one global nested struct. 60 Hz tick-driven.
 ------------------------------------------------------------------------------*/
 #include <stdint.h>
@@ -237,8 +237,7 @@ static void frame(void) {
     sg_begin_pass(&(sg_pass){
         .action = {
             .colors[0] = { .load_action = SG_LOADACTION_CLEAR, .clear_value = {0, 0, 0, 1} }
-        },
-        .environment = sglue_environment()
+        }
     });
     
     // Core engine rendering passes call here
