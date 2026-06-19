@@ -30,6 +30,7 @@
 #define MAZE_WIDTH 28
 #define SCREEN_WIDTH 224
 #define SCREEN_HEIGHT 288
+#define TILE_SIZE 8
 
 // --- Enumerations & Data Structures ---
 
@@ -95,12 +96,6 @@ typedef enum {
 } game_state_t;
 
 typedef struct {
-    uint32_t start_tick;
-    uint32_t duration;
-    bool active;
-} trigger_t;
-
-typedef struct {
     int x, y;
     direction_t dir;
     direction_t next_dir;
@@ -144,13 +139,13 @@ typedef struct {
     } game;
 } game_instance_t;
 
-enum {
-    TILE_CHERRIES = 0x90
-};
-
 #include "pacman_rom_data.h"
 
 static game_instance_t state;
+
+// Software Framebuffer Context
+static uint32_t pixel_buffer[SCREEN_WIDTH * SCREEN_HEIGHT];
+static sg_image fb_image;
 
 // --- Timing Utilities ---
 
@@ -164,20 +159,10 @@ static bool now(uint32_t trigger) {
 
 // --- Maze Generation & Processing ---
 
-static int get_tile_color(maze_tile_t type) {
-    switch (type) {
-        case MT_WALL:   return 6; // Blue hardware mapping color
-        case MT_FRUIT:  return 1; // Cherry red index profile mapping
-        case MT_DOT:    return 7; // White
-        default:        return 0;
-    }
-}
-
 static maze_tile_t get_procedural_tile(int x, int y) {
     if (x <= 0 || x >= MAZE_WIDTH - 1) return MT_WALL;
     if (y < 5) return MT_EMPTY;
     
-    // Quick pseudo-random generation layout
     uint32_t hash = (uint32_t)(x * 7321 + y * 9023);
     if (hash % 7 == 0) return MT_WALL;
     if (hash % 13 == 0) return MT_DOT;
@@ -185,16 +170,37 @@ static maze_tile_t get_procedural_tile(int x, int y) {
     return MT_EMPTY;
 }
 
-// --- Game Logic Stubs for Framework Completion ---
+// --- Drawing Helper Primitives ---
+
+static void clear_pixel_buffer(uint32_t color) {
+    for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
+        pixel_buffer[i] = color;
+    }
+}
+
+static void draw_rect(int x, int y, int w, int h, uint32_t color) {
+    for (int dy = 0; dy < h; dy++) {
+        int py = y + dy;
+        if (py < 0 || py >= SCREEN_HEIGHT) continue;
+        for (int dx = 0; dx < w; dx++) {
+            int px = x + dx;
+            if (px < 0 || px >= SCREEN_WIDTH) continue;
+            pixel_buffer[py * SCREEN_WIDTH + px] = color;
+        }
+    }
+}
+
+// --- Game Logic ---
 
 static void init_game(void) {
     memset(&state, 0, sizeof(state));
     state.mode = STATE_GAMEPLAY;
     state.pacman.x = 14;
-    state.pacman.y = 10;
+    state.pacman.y = 15;
     state.pacman.dir = DIR_NONE;
     state.combo_multiplier = 1;
     state.glitch_y = 0.0f;
+    state.scroll_y = 0.0f;
     
     start_after(&state.game.round_started, 2 * 60);
 }
@@ -203,13 +209,9 @@ static void update_game_loop(void) {
     state.global_tick++;
     
     if (state.mode == STATE_GAMEPLAY) {
-        // Safe linear scrolling speed layout
-        state.scroll_y += 0.05f;
-        state.glitch_y += 0.03f;
-        
-        if (now(state.game.round_started)) {
-            // Runtime simulation updates go here
-        }
+        // Safe scrolling update step
+        state.scroll_y += 0.2f;
+        state.glitch_y += 0.15f;
     }
 }
 
@@ -226,6 +228,14 @@ static void init(void) {
         .num_channels = 1,
         .logger.func = slog_func,
     });
+
+    // Create dynamic frame buffer texture backing asset mapping
+    fb_image = sg_make_image(&(sg_image_desc){
+        .width = SCREEN_WIDTH,
+        .height = SCREEN_HEIGHT,
+        .usage = SG_USAGE_STREAM,
+        .pixel_format = SG_PIXELFORMAT_RGBA8,
+    });
     
     init_game();
 }
@@ -233,20 +243,52 @@ static void init(void) {
 static void frame(void) {
     update_game_loop();
     
-    // Establish raw clear values to confirm graphics pipeline sanity
-    float clear_blue = 0.05f + (0.05f * (float)sizeof(state.pacman.x) / 100.0f);
+    // Clear back buffer frame to true black
+    clear_pixel_buffer(0xFF000000);
     
+    int offset_y = (int)state.scroll_y;
+    int start_tile_y = (offset_y / TILE_SIZE);
+    
+    // Render all visible paths based on local offsets
+    for (int y = 0; y < (SCREEN_HEIGHT / TILE_SIZE) + 1; y++) {
+        int map_y = start_tile_y + y;
+        int render_y = (y * TILE_SIZE) - (offset_y % TILE_SIZE);
+        
+        for (int x = 0; x < MAZE_WIDTH; x++) {
+            maze_tile_t tile = get_procedural_tile(x, map_y);
+            int render_x = x * TILE_SIZE;
+            
+            if (tile == MT_WALL) {
+                draw_rect(render_x, render_y, TILE_SIZE - 1, TILE_SIZE - 1, 0xFFFF3300); // ABGR - Blue
+            } else if (tile == MT_DOT) {
+                draw_rect(render_x + 3, render_y + 3, 2, 2, 0xFFFFFFFF); // White
+            }
+        }
+    }
+    
+    // Draw Pac-Man actor onto software grid frame maps
+    int pac_render_y = (state.pacman.y * TILE_SIZE) - (offset_y % TILE_SIZE);
+    if (pac_render_y >= 0 && pac_render_y < SCREEN_HEIGHT) {
+        draw_rect(state.pacman.x * TILE_SIZE, pac_render_y, TILE_SIZE, TILE_SIZE, 0xFF00FFFF); // ABGR - Yellow
+    }
+
+    // Stream pixel updates directly into modern GPU render maps
+    sg_update_image(fb_image, &(sg_image_data){
+        .subimage[0][0] = {
+            .ptr = pixel_buffer,
+            .size = sizeof(pixel_buffer)
+        }
+    });
+
+    // Fire standard rendering target pipelines
     sg_begin_pass(&(sg_pass){
         .action = {
-            .colors[0] = { 
-                .load_action = SG_LOADACTION_CLEAR, 
-                .clear_value = { 0.0f, 0.0f, clear_blue, 1.0f } 
-            }
+            .colors[0] = { .load_action = SG_LOADACTION_CLEAR, .clear_value = {0, 0, 0, 1} }
         },
         .swapchain = sglue_swapchain()
     });
     
-    // Low-level vertex compilation and shader passes map here natively
+    // Low level structural pass updates flow out natively 
     
     sg_end_pass();
     sg_commit();
