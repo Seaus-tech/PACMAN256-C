@@ -3297,9 +3297,9 @@ typedef struct sg_buffer_desc {
         the image content cannot be updated from the CPU side
         (but may be updated by the GPU in a render- or compute-pass)
     .dynamic_update (default: false)
-        the image content is updated infrequently by the CPU
+        the image content is updated infrequently by the CPU via sg_update_image()
     .stream_update (default: false)
-        the image content is updated each frame by the CPU via
+        the image content is updated each frame by the CPU via sg_update_image()
 
     Note that creating a texture view from the image to be used for
     texture-sampling in vertex-, fragment- or compute-shaders
@@ -5626,11 +5626,18 @@ inline int sg_append_buffer(sg_buffer buf_id, const sg_range& data) { return sg_
             #ifndef GL_SILENCE_DEPRECATION
                 #define GL_SILENCE_DEPRECATION
             #endif
-            #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
-                #include <OpenGL/gl3.h>
+            #ifndef GLES_SILENCE_DEPRECATION
+                #define GLES_SILENCE_DEPRECATION
+            #endif
+            #if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+                #if defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
+                    #include <OpenGL/gl3.h>
+                #else
+                    #include <OpenGLES/ES3/gl.h>
+                    #include <OpenGLES/ES3/glext.h>
+                #endif
             #else
-                #include <OpenGLES/ES3/gl.h>
-                #include <OpenGLES/ES3/glext.h>
+                #include <OpenGL/gl3.h>
             #endif
         #elif defined(__EMSCRIPTEN__)
             #if defined(SOKOL_GLES3)
@@ -5671,12 +5678,18 @@ inline int sg_append_buffer(sg_buffer buf_id, const sg_range& data) { return sg_
             #define _SOKOL_GL_HAS_BASEVERTEX (1)
         #endif
     #elif defined(__APPLE__)
-        #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
+        #if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+            #if defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
+                #define _SOKOL_GL_HAS_COLORMASKI (1)
+                #define _SOKOL_GL_HAS_BASEVERTEX (1)
+                #define _SOKOL_GL_HAS_DUALSOURCEBLENDING (1)
+            #else
+                #define _SOKOL_GL_HAS_TEXSTORAGE (1)
+            #endif
+        #else
             #define _SOKOL_GL_HAS_COLORMASKI (1)
             #define _SOKOL_GL_HAS_BASEVERTEX (1)
             #define _SOKOL_GL_HAS_DUALSOURCEBLENDING (1)
-        #else
-            #define _SOKOL_GL_HAS_TEXSTORAGE (1)
         #endif
     #elif defined(__EMSCRIPTEN__)
         #define _SOKOL_GL_HAS_TEXSTORAGE (1)
@@ -11416,7 +11429,7 @@ _SOKOL_PRIVATE void _sg_gl_handle_memory_barriers(const _sg_shader_t* shd, const
                 }
             } else if (view->cmn.type == SG_VIEWTYPE_STORAGEIMAGE) {
                 _sg_image_t* img = _sg_image_ref_ptr(&view->cmn.img.ref);
-                if (img->gl.gpu_dirty_flags &= _SG_GL_GPUDIRTY_STORAGEIMAGE) {
+                if (img->gl.gpu_dirty_flags & _SG_GL_GPUDIRTY_STORAGEIMAGE) {
                     gl_barrier_bits |= GL_SHADER_IMAGE_ACCESS_BARRIER_BIT;
                     img->gl.gpu_dirty_flags &= (uint8_t)~_SG_GL_GPUDIRTY_STORAGEIMAGE;
                 }
@@ -12003,7 +12016,9 @@ _SOKOL_PRIVATE bool _sg_gl_apply_bindings(_sg_bindings_ptrs_t* bnd) {
                 GLuint gl_tex = img->gl.tex[img->cmn.active_slot];
                 GLint level = (GLint)view->cmn.img.mip_level;
                 GLint layer = (GLint)view->cmn.img.slice;
-                GLboolean layered = shd->cmn.views[i].image_type != SG_IMAGETYPE_2D;
+                // NOTE: when picking a specific layer, the 'layered' flag must be false,
+                // this was previously bugged
+                GLboolean layered = GL_FALSE;
                 GLenum access = shd->cmn.views[i].simg_writeonly ? GL_WRITE_ONLY : GL_READ_WRITE;
                 GLenum format = _sg_gl_teximage_internal_format(shd->cmn.views[i].access_format);
                 // NOTE: we specifically don't go through the GL cache since storage images
@@ -18299,7 +18314,7 @@ _SOKOL_PRIVATE sg_resource_state _sg_wgpu_create_shader(_sg_shader_t* shd, const
                 bgl_entry->storageTexture.access = WGPUStorageTextureAccess_ReadWrite;
             }
             bgl_entry->storageTexture.format = _sg_wgpu_textureformat(shd->cmn.views[i].access_format);
-            bgl_entry->texture.viewDimension = _sg_wgpu_texture_view_dimension(shd->cmn.views[i].image_type);
+            bgl_entry->storageTexture.viewDimension = _sg_wgpu_texture_view_dimension(shd->cmn.views[i].image_type);
         } else {
             SOKOL_UNREACHABLE;
         }
