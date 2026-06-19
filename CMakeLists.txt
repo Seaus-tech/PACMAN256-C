@@ -8,16 +8,20 @@ if(EMSCRIPTEN)
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
 endif()
 
-# Sokol headers (Added the /sokol directory so headers are found cleanly)
+# Sokol headers configuration mapping include directories
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/sokol)
 
-# Main executable
+# Main executable asset target compilation structure
 add_executable(pacman256 pacman256.c sokol/sokol.c)
 
 if(EMSCRIPTEN)
     set_target_properties(pacman256 PROPERTIES SUFFIX ".html")
 else()
     if(APPLE)
+        # Force the Sokol backend implementation to compile as Objective-C 
+        # so it can parse AppKit, Foundation, and Metal structures cleanly.
+        set_source_files_properties(sokol/sokol.c PROPERTIES COMPILE_OPTIONS "-x;objective-c")
+        
         find_library(COCOA_LIBRARY Cocoa)
         find_library(QUARTZ_CORE_LIBRARY QuartzCore)
         find_library(METAL_LIBRARY Metal)
