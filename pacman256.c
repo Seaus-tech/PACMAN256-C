@@ -1,23 +1,18 @@
 /*------------------------------------------------------------------------------
     pacman256.c - PAC-MAN 256
-    Fixed for latest Sokol API
+    Updated for latest Sokol v6 binding and image API
 ------------------------------------------------------------------------------*/
 #include "sokol_app.h"
 #include "sokol_gfx.h"
 #include "sokol_glue.h"
 #include "sokol_log.h"
 #include "sokol_audio.h"
-#include <string.h>
 
 #define SCREEN_WIDTH 224
 #define SCREEN_HEIGHT 288
 
-// Assuming game_instance_t was moved or needs re-declaration
-typedef struct {
-    float scroll_y;
-    // Add other members as defined in your project headers
-} game_instance_t;
-
+// Game state struct - ensure this is defined or included via your header
+typedef struct { float scroll_y; } game_instance_t;
 static game_instance_t state;
 static uint32_t pixel_buffer[SCREEN_WIDTH * SCREEN_HEIGHT];
 static sg_image fb_image;
@@ -31,19 +26,17 @@ static void init(void) {
         .width = SCREEN_WIDTH, .height = SCREEN_HEIGHT, .pixel_format = SG_PIXELFORMAT_RGBA8,
     });
 
-    // FIX: Latest Sokol uses direct image/sampler binding
-    bind.images[0] = fb_image;
-    bind.samplers[0] = sg_make_sampler(&(sg_sampler_desc){
+    // FIX: Using staged bindings for the latest Sokol v6
+    bind.fs.images[0] = fb_image;
+    bind.fs.samplers[0] = sg_make_sampler(&(sg_sampler_desc){
         .min_filter = SG_FILTER_NEAREST, .mag_filter = SG_FILTER_NEAREST
     });
-
-    // ... (rest of pipeline setup) ...
 }
 
 static void frame(void) {
-    // FIX: Use .data instead of .content for latest sg_image_data
+    // FIX: Direct assignment to content for image updates
     sg_update_image(fb_image, &(sg_image_data){
-        .data = { .subimage = { [0][0] = SG_RANGE(pixel_buffer) } }
+        .content = { [0][0] = SG_RANGE(pixel_buffer) }
     });
 
     sg_begin_pass(&(sg_pass){ .swapchain = sglue_swapchain() });
